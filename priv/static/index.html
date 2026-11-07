@@ -1,0 +1,468 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FireSense Live</title>
+<style>
+:root {
+  --bg: #eef1f2; --panel: #f9fbfb; --ink: #172026; --muted: #5a666d; --rule: #cfd7da; --grid: #e1e7e9;
+  --signal: #0b6f7c; --var: #a8620a; --spec: #6a4bb0; --pkt: #2f7a3a; --event: #c0392b;
+  --ok: #2f7a3a; --ok-soft: #dbeedd; --warn: #9a5b07; --warn-soft: #f6e6cc; --fire: #b3261e; --fire-soft: #f6d9d5;
+  --band-people: rgba(90,102,109,.12); --band-fire: rgba(179,38,30,.10);
+  --mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #101619; --panel: #172024; --ink: #dfe6e9; --muted: #95a3aa; --rule: #2b383e; --grid: #213036;
+    --signal: #56c2cf; --var: #e7a54a; --spec: #a98cf0; --pkt: #7cc788; --event: #ef7d72;
+    --ok: #7cc788; --ok-soft: #1c3320; --warn: #e7a54a; --warn-soft: #3b2c16; --fire: #ef7d72; --fire-soft: #3f1f1c;
+    --band-people: rgba(149,163,170,.12); --band-fire: rgba(239,125,114,.12);
+    color-scheme: dark;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 var(--sans); padding: 16px max(16px, env(safe-area-inset-left)) 40px; }
+.wrap { max-width: 1200px; margin: 0 auto; display: grid; gap: 16px; }
+header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
+h1 { margin: 0; font-size: 1.5rem; letter-spacing: -0.01em; }
+h1 small { font-weight: 400; color: var(--muted); font-size: 0.9rem; margin-left: 8px; }
+h2 { margin: 0; font-size: 0.95rem; font-weight: 600; }
+.label { font: 500 0.7rem var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.panel { background: var(--panel); border: 1px solid var(--rule); border-radius: 8px; padding: 14px; display: grid; gap: 10px; min-width: 0; }
+.row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+button, input, select { font: inherit; font-size: 0.9rem; }
+button { padding: 6px 12px; border-radius: 6px; border: 1px solid var(--rule); background: var(--bg); color: var(--ink); cursor: pointer; }
+button:hover { border-color: var(--signal); }
+button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
+button.primary { background: var(--signal); border-color: var(--signal); color: var(--panel); font-weight: 600; }
+button.rec { background: var(--fire); border-color: var(--fire); color: var(--panel); font-weight: 600; }
+button.ev { font-family: var(--mono); font-size: 0.8rem; }
+input[type=text] { padding: 6px 10px; border-radius: 6px; border: 1px solid var(--rule); background: var(--bg); color: var(--ink); width: 160px; }
+select { padding: 5px 8px; border-radius: 6px; border: 1px solid var(--rule); background: var(--bg); color: var(--ink); }
+.dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); display: inline-block; }
+.dot.live { background: var(--ok); }
+.dot.recording { background: var(--fire); animation: blink 1s infinite; }
+@keyframes blink { 50% { opacity: .3; } }
+@media (prefers-reduced-motion: reduce) { .dot.recording { animation: none; } }
+
+.verdict { display: grid; grid-template-columns: auto 1fr; gap: 4px 16px; align-items: center; border-radius: 8px; padding: 14px 16px; border: 1px solid var(--rule); }
+.verdict .state { font-size: 1.35rem; font-weight: 700; grid-row: span 2; padding-right: 8px; }
+.verdict.quiet { background: var(--ok-soft); color: var(--ok); }
+.verdict.move { background: var(--warn-soft); color: var(--warn); }
+.verdict.fire { background: var(--fire-soft); color: var(--fire); }
+.verdict.none { background: var(--panel); color: var(--muted); }
+.verdict p { margin: 0; color: var(--ink); font-size: 0.9rem; }
+
+.tiles { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; }
+.tile { background: var(--panel); border: 1px solid var(--rule); border-radius: 8px; padding: 10px 12px; display: grid; gap: 2px; }
+.tile .v { font: 600 1.45rem var(--mono); font-variant-numeric: tabular-nums; }
+.tile .s { font-size: 0.78rem; color: var(--muted); }
+.charts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.chart-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.chart-head p { margin: 0; font-size: 0.8rem; color: var(--muted); }
+canvas { width: 100%; height: 220px; display: block; }
+.note { font-size: 0.82rem; color: var(--muted); margin: 0; }
+@media (max-width: 860px) {
+  .charts { grid-template-columns: minmax(0, 1fr); }
+  .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>FireSense Live <small>Wi-Fi fire detection experiment</small></h1>
+    <div class="row">
+      <span class="dot" id="liveDot"></span><span class="label" id="liveText">connecting</span>
+      <label class="label" for="win">Window</label>
+      <select id="win"><option value="60">1 min</option><option value="120" selected>2 min</option><option value="300">5 min</option></select>
+    </div>
+  </header>
+
+  <div class="verdict none" id="verdict" aria-live="polite">
+    <span class="state" id="vState">No baseline</span>
+    <p id="vWhy">Keep the area still for 30 seconds, then press <strong>Set baseline</strong>. Every reading is compared with it.</p>
+    <p class="note">Experimental. This is not a fire alarm.</p>
+  </div>
+
+  <div class="tiles">
+    <div class="tile"><span class="label">Signal</span><span class="v" id="tSig">–</span><span class="s" id="tSigS">dBm</span></div>
+    <div class="tile"><span class="label">Variability</span><span class="v" id="tVar">–</span><span class="s" id="tVarS">dB, 2 s spread</span></div>
+    <div class="tile"><span class="label">Flicker band 2.5–9 Hz</span><span class="v" id="tFl">–</span><span class="s" id="tFlS">× baseline</span></div>
+    <div class="tile"><span class="label">Movement band 0.3–2 Hz</span><span class="v" id="tPe">–</span><span class="s" id="tPeS">× baseline</span></div>
+    <div class="tile"><span class="label">Packets</span><span class="v" id="tPk">–</span><span class="s" id="tPkS">ping replies/s · samples/s</span></div>
+  </div>
+
+  <div class="panel">
+    <div class="row">
+      <button id="recBtn" class="primary" type="button">Start recording</button>
+      <button id="baseBtn" type="button">Set baseline</button>
+      <span class="label" id="recInfo">not recording</span>
+    </div>
+    <div class="row" id="evRow" role="group" aria-label="Mark an event">
+      <span class="label">Mark event</span>
+    </div>
+    <form class="row" id="evForm">
+      <label class="label" for="evText">Custom</label>
+      <input id="evText" type="text" maxlength="60" placeholder="e.g. 10 cm tray">
+      <button type="submit">Mark</button>
+    </form>
+  </div>
+
+  <div class="panel" id="heatPanel">
+    <div class="chart-head"><h2>Heat test</h2><p>Runs off / on cycles automatically, marks every change and compares each heat period with the quiet periods around it.</p></div>
+    <form class="row" id="heatForm">
+      <label class="label" for="hSource">Source</label>
+      <select id="hSource">
+        <option>hot plate</option><option>toaster</option><option>heat gun</option><option>hair dryer</option><option>kettle</option><option>candle</option><option>flame</option>
+      </select>
+      <label class="label" for="hPower">Power W</label><input id="hPower" type="text" inputmode="numeric" value="1000" style="width:80px">
+      <label class="label" for="hHeight">Link height cm</label><input id="hHeight" type="text" inputmode="numeric" value="50" style="width:70px">
+      <label class="label" for="hOn">On min</label><input id="hOn" type="text" inputmode="decimal" value="3" style="width:56px">
+      <label class="label" for="hOff">Off min</label><input id="hOff" type="text" inputmode="decimal" value="3" style="width:56px">
+      <label class="label" for="hCycles">Cycles</label><input id="hCycles" type="text" inputmode="numeric" value="3" style="width:56px">
+      <button type="submit" class="primary" id="hBtn">Start heat test</button>
+    </form>
+    <div class="verdict none" id="hState" aria-live="polite">
+      <span class="state" id="hPhase">Idle</span>
+      <p id="hClock">Set the source, power and link height, then start. Switch the heat on and off when the box tells you.</p>
+      <p class="note" id="hCycleInfo">The first period is quiet, to measure normal noise.</p>
+    </div>
+    <canvas id="cHeat" aria-label="Variability in each off and on period" style="height:180px"></canvas>
+    <div style="overflow-x:auto"><table id="hTable" style="width:100%;border-collapse:collapse;font-size:.85rem">
+      <thead><tr><th style="text-align:left">Cycle</th><th style="text-align:left">Test</th><th>Variability on/off</th><th>Flicker on/off</th><th>Signal shift</th><th>Seen?</th></tr></thead>
+      <tbody></tbody>
+    </table></div>
+  </div>
+
+  <div class="charts">
+    <div class="panel">
+      <div class="chart-head"><h2>Signal strength</h2><p>RSSI in dBm. People and objects cause dips; heat may cause slow drift.</p></div>
+      <canvas id="cSig" aria-label="Signal strength over time"></canvas>
+    </div>
+    <div class="panel">
+      <div class="chart-head"><h2>Variability</h2><p>Spread of the signal over 2 s. Turbulence from a flame raises it.</p></div>
+      <canvas id="cVar" aria-label="Signal variability over time"></canvas>
+    </div>
+    <div class="panel">
+      <div class="chart-head"><h2>Flicker spectrum</h2><p>Last ~25 s. Flames flicker at 2.5–9 Hz (shaded red); walking sits at 0.3–2 Hz (grey).</p></div>
+      <canvas id="cSpec" aria-label="Frequency spectrum of the signal"></canvas>
+    </div>
+    <div class="panel">
+      <div class="chart-head"><h2>Link health</h2><p>Ping replies per second (100 sent). A drop means lost packets.</p></div>
+      <canvas id="cPkt" aria-label="Ping replies per second over time"></canvas>
+    </div>
+  </div>
+  <p class="note">Flicker f ≈ 1.5/√D Hz for a fire D metres wide: about 6.7 Hz for a 5 cm tray, 4.7 Hz for 10 cm. Signal is sampled 20 times a second, so the spectrum reaches 10 Hz.</p>
+</div>
+
+<script>
+(() => {
+  const EVENTS = ["quiet", "walk", "stand", "door", "fan", "kettle", "heat gun", "flame on", "flame off"];
+  const FLICKER = [2.5, 9], PEOPLE = [0.3, 2];
+  const MAXN = 6000, NFFT = 512;
+  const T = [], S = [], R = [];
+  let events = [], last = 0, status = { session: null, rows: 0 }, spec = null, baseline = null;
+
+  try { baseline = JSON.parse(localStorage.getItem("fs_baseline") || "null"); } catch (e) { baseline = null; }
+
+  const $ = id => document.getElementById(id);
+  const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+
+  // ---------- data ----------
+  async function poll() {
+    try {
+      const r = await fetch("/api/data?since=" + last);
+      const d = await r.json();
+      for (const [t, s, , rep] of d.samples) { T.push(t); S.push(s); R.push(rep); }
+      if (T.length > MAXN) { const k = T.length - MAXN; T.splice(0, k); S.splice(0, k); R.splice(0, k); }
+      if (d.samples.length) last = d.samples[d.samples.length - 1][0];
+      events = events.concat(d.events).slice(-300);
+      status = d.status;
+      $("liveDot").className = "dot " + (status.session ? "recording" : "live");
+      $("liveText").textContent = status.session ? "recording" : "live";
+    } catch (e) {
+      $("liveDot").className = "dot"; $("liveText").textContent = "no connection";
+    }
+    render();
+  }
+
+  async function post(path, body) {
+    try {
+      const r = await fetch(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body || {}) });
+      const d = await r.json(); if (d.status) status = d.status;
+    } catch (e) { /* next poll shows the state */ }
+    poll();
+  }
+
+  // ---------- maths ----------
+  function filled(from) {
+    const out = []; let prev = null;
+    for (let i = from; i < S.length; i++) { const v = S[i] == null ? prev : S[i]; if (v != null) { out.push(v); prev = v; } }
+    return out;
+  }
+  function rollingStd(winSec) {
+    const out = new Array(T.length).fill(null); let j = 0, sum = 0, sq = 0, n = 0;
+    for (let i = 0; i < T.length; i++) {
+      if (S[i] != null) { sum += S[i]; sq += S[i] * S[i]; n++; }
+      while (T[i] - T[j] > winSec) { if (S[j] != null) { sum -= S[j]; sq -= S[j] * S[j]; n--; } j++; }
+      if (n >= 5) out[i] = Math.sqrt(Math.max(0, sq / n - (sum / n) ** 2));
+    }
+    return out;
+  }
+  function spectrum() {
+    if (T.length < NFFT) return null;
+    const i0 = T.length - NFFT, x = filled(i0);
+    if (x.length < NFFT * 0.9) return null;
+    const n = x.length, fs = (n - 1) / (T[T.length - 1] - T[i0]);
+    let mx = 0, my = 0, sxy = 0, sxx = 0;
+    for (let i = 0; i < n; i++) { mx += i; my += x[i]; } mx /= n; my /= n;
+    for (let i = 0; i < n; i++) { sxy += (i - mx) * (x[i] - my); sxx += (i - mx) ** 2; }
+    const slope = sxy / sxx, y = x.map((v, i) => (v - my - slope * (i - mx)) * (0.5 - 0.5 * Math.cos(2 * Math.PI * i / (n - 1))));
+    const f = [], p = [];
+    for (let k = 1; k < n / 2; k++) {
+      let re = 0, im = 0; const w = 2 * Math.PI * k / n;
+      for (let i = 0; i < n; i++) { re += y[i] * Math.cos(w * i); im -= y[i] * Math.sin(w * i); }
+      f.push(k * fs / n); p.push((re * re + im * im) / n);
+    }
+    return { f, p, fs };
+  }
+  const band = (sp, [a, b]) => sp ? sp.p.reduce((s, v, i) => (sp.f[i] >= a && sp.f[i] <= b ? s + v : s), 0) : 0;
+  function meanLast(arr, sec) {
+    const tEnd = T[T.length - 1]; let s = 0, n = 0;
+    for (let i = T.length - 1; i >= 0 && tEnd - T[i] <= sec; i--) if (arr[i] != null) { s += arr[i]; n++; }
+    return n ? s / n : null;
+  }
+
+  // ---------- drawing ----------
+  function setup(c) {
+    const dpr = window.devicePixelRatio || 1, w = c.clientWidth, h = c.clientHeight;
+    if (c.width !== Math.round(w * dpr)) { c.width = Math.round(w * dpr); c.height = Math.round(h * dpr); }
+    const g = c.getContext("2d"); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, w, h);
+    return { g, w, h };
+  }
+  function chart(c, o) {
+    const { g, w, h } = setup(c), L = 46, Rm = 10, Tm = 10, B = 24;
+    const X = x => L + (x - o.x0) / (o.x1 - o.x0) * (w - L - Rm);
+    const Y = y => Tm + (o.y1 - y) / (o.y1 - o.y0) * (h - Tm - B);
+    g.font = "11px " + css("--mono"); g.lineWidth = 1;
+    (o.bands || []).forEach(([a, b, col]) => { g.fillStyle = col; g.fillRect(X(a), Tm, X(b) - X(a), h - Tm - B); });
+    g.strokeStyle = css("--grid"); g.fillStyle = css("--muted");
+    o.yticks.forEach(v => { g.beginPath(); g.moveTo(L, Y(v)); g.lineTo(w - Rm, Y(v)); g.stroke(); g.textAlign = "right"; g.fillText(o.yfmt(v), L - 6, Y(v) + 4); });
+    o.xticks.forEach(v => { g.textAlign = "center"; g.fillText(o.xfmt(v), X(v), h - 6); });
+    (o.events || []).forEach(e => {
+      if (e.x < o.x0 || e.x > o.x1) return;
+      g.strokeStyle = css("--event"); g.setLineDash([4, 3]); g.beginPath(); g.moveTo(X(e.x), Tm); g.lineTo(X(e.x), h - B); g.stroke(); g.setLineDash([]);
+      g.save(); g.translate(X(e.x) + 4, Tm + 2); g.rotate(Math.PI / 2); g.fillStyle = css("--event"); g.textAlign = "left"; g.fillText(e.note, 0, 0); g.restore();
+    });
+    (o.series || []).forEach(sr => {
+      g.strokeStyle = sr.color; g.lineWidth = sr.width || 1.5; g.beginPath(); let pen = false;
+      for (let i = 0; i < sr.x.length; i++) {
+        const xv = sr.x[i], yv = sr.y[i];
+        if (yv == null || xv < o.x0) { pen = false; continue; }
+        const px = X(xv), py = Y(Math.max(o.y0, Math.min(o.y1, yv)));
+        if (pen) g.lineTo(px, py); else { g.moveTo(px, py); pen = true; }
+      }
+      g.stroke();
+    });
+    (o.hlines || []).forEach(([v, col, label]) => {
+      if (v < o.y0 || v > o.y1) return;
+      g.strokeStyle = col; g.setLineDash([6, 4]); g.beginPath(); g.moveTo(L, Y(v)); g.lineTo(w - Rm, Y(v)); g.stroke(); g.setLineDash([]);
+      g.fillStyle = col; g.textAlign = "right"; g.fillText(label, w - Rm - 4, Y(v) - 4);
+    });
+    if (o.empty) { g.fillStyle = css("--muted"); g.textAlign = "center"; g.fillText(o.empty, w / 2, h / 2); }
+  }
+  function ticks(a, b, n) {
+    const step = Math.pow(10, Math.floor(Math.log10((b - a) / n))), m = [1, 2, 5, 10].find(m => (b - a) / (step * m) <= n) * step;
+    const out = []; for (let v = Math.ceil(a / m) * m; v <= b + 1e-9; v += m) out.push(+v.toFixed(6)); return out;
+  }
+
+  // ---------- render ----------
+  function render() {
+    if (!T.length) return;
+    const now = T[T.length - 1], win = +$("win").value, x0 = now - win;
+    const rel = T.map(t => t - now), evs = events.map(e => ({ x: e.t - now, note: e.note }));
+    const xt = ticks(-win, 0, 6), xf = v => (v === 0 ? "now" : v + " s");
+    const vis = S.filter((v, i) => v != null && T[i] >= x0);
+    const lo = vis.length ? Math.min(...vis) : -70, hi = vis.length ? Math.max(...vis) : -30;
+    const sy0 = Math.floor(lo - 2), sy1 = Math.ceil(hi + 2);
+
+    chart($("cSig"), { x0: -win, x1: 0, y0: sy0, y1: sy1, xticks: xt, xfmt: xf, yticks: ticks(sy0, sy1, 5), yfmt: v => v,
+      series: [{ x: rel, y: S, color: css("--signal") }], events: evs,
+      hlines: baseline ? [[baseline.sig, css("--muted"), "baseline"]] : [] });
+
+    const rv = rollingStd(2), vmax = Math.max(2, ...rv.filter((v, i) => v != null && T[i] >= x0)) * 1.15;
+    chart($("cVar"), { x0: -win, x1: 0, y0: 0, y1: vmax, xticks: xt, xfmt: xf, yticks: ticks(0, vmax, 4), yfmt: v => v,
+      series: [{ x: rel, y: rv, color: css("--var") }], events: evs,
+      hlines: baseline ? [[baseline.var, css("--muted"), "baseline"], [baseline.var * 2, css("--fire"), "2× baseline"]] : [] });
+
+    spec = spectrum();
+    if (spec) {
+      const fmax = Math.min(10, spec.fs / 2), pv = spec.p.filter((v, i) => spec.f[i] <= fmax), pm = Math.max(...pv, 1e-9) * 1.1;
+      chart($("cSpec"), { x0: 0, x1: fmax, y0: 0, y1: pm, xticks: ticks(0, fmax, 10), xfmt: v => v + " Hz", yticks: ticks(0, pm, 4), yfmt: v => v.toFixed(v < 1 ? 2 : 0),
+        series: [{ x: spec.f, y: spec.p, color: css("--spec"), width: 2 }],
+        bands: [[PEOPLE[0], PEOPLE[1], css("--band-people")], [FLICKER[0], Math.min(FLICKER[1], fmax), css("--band-fire")]] });
+    } else {
+      chart($("cSpec"), { x0: 0, x1: 10, y0: 0, y1: 1, xticks: ticks(0, 10, 10), xfmt: v => v + " Hz", yticks: [], yfmt: v => v, empty: "Collecting ~25 s of data…" });
+    }
+
+    const rps = [], rpx = [];
+    for (let i = 0; i < T.length; i++) {
+      if (T[i] < x0) continue;
+      let s = 0; for (let j = i; j >= 0 && T[i] - T[j] < 1; j--) s += R[j] || 0;
+      if (i % 10 === 0) { rps.push(s); rpx.push(rel[i]); }
+    }
+    chart($("cPkt"), { x0: -win, x1: 0, y0: 0, y1: 120, xticks: xt, xfmt: xf, yticks: [0, 50, 100], yfmt: v => v,
+      series: [{ x: rpx, y: rps, color: css("--pkt") }], events: evs });
+
+    // tiles and verdict
+    const sigNow = meanLast(S, 2), varNow = meanLast(rv, 5);
+    const fl = band(spec, FLICKER), pe = band(spec, PEOPLE);
+    const samplesPerSec = T.filter(t => now - t < 5).length / 5, repliesPerSec = rps.length ? rps[rps.length - 1] : 0;
+    $("tSig").textContent = sigNow == null ? "–" : sigNow.toFixed(1);
+    $("tSigS").textContent = baseline && sigNow != null ? `dBm · ${(sigNow - baseline.sig >= 0 ? "+" : "")}${(sigNow - baseline.sig).toFixed(1)} vs baseline` : "dBm";
+    $("tVar").textContent = varNow == null ? "–" : varNow.toFixed(2);
+    $("tVarS").textContent = baseline && varNow != null ? `dB · ${(varNow / baseline.var).toFixed(1)}× baseline` : "dB, 2 s spread";
+    $("tFl").textContent = baseline && spec ? (fl / baseline.fl).toFixed(1) + "×" : "–";
+    $("tPe").textContent = baseline && spec ? (pe / baseline.pe).toFixed(1) + "×" : "–";
+    $("tPk").textContent = repliesPerSec;
+    $("tPkS").textContent = `ping replies/s · ${samplesPerSec.toFixed(0)} samples/s`;
+
+    const v = $("verdict");
+    if (!baseline) {
+      v.className = "verdict none"; $("vState").textContent = "No baseline";
+      $("vWhy").innerHTML = "Keep the area still for 30 seconds, then press <strong>Set baseline</strong>. Every reading is compared with it.";
+    } else if (!spec || varNow == null) {
+      v.className = "verdict none"; $("vState").textContent = "Warming up"; $("vWhy").textContent = "Collecting enough data for the spectrum.";
+    } else {
+      const vr = varNow / baseline.var, fr = fl / baseline.fl, pr = pe / baseline.pe;
+      if (fr >= 3 && vr >= 1.5 && fl > pe) {
+        v.className = "verdict fire"; $("vState").textContent = "Fire-like flicker";
+        $("vWhy").textContent = `Flicker band ${fr.toFixed(1)}× baseline and variability ${vr.toFixed(1)}×, stronger than the movement band.`;
+      } else if (vr >= 1.5 || pr >= 3 || fr >= 3) {
+        v.className = "verdict move"; $("vState").textContent = "Disturbance";
+        $("vWhy").textContent = `Variability ${vr.toFixed(1)}×, movement band ${pr.toFixed(1)}×, flicker band ${fr.toFixed(1)}× baseline. Most likely movement.`;
+      } else {
+        v.className = "verdict quiet"; $("vState").textContent = "Quiet";
+        $("vWhy").textContent = `Everything within normal range of the baseline (variability ${vr.toFixed(1)}×).`;
+      }
+    }
+    $("recBtn").textContent = status.session ? "Stop recording" : "Start recording";
+    $("recBtn").className = status.session ? "rec" : "primary";
+    $("recInfo").textContent = status.session ? `session ${status.session} · ${status.rows} rows saved` : "not recording";
+  }
+
+  // ---------- controls ----------
+  EVENTS.forEach(n => {
+    const b = document.createElement("button"); b.type = "button"; b.className = "ev"; b.textContent = n;
+    b.addEventListener("click", () => post("/api/mark", { note: n })); $("evRow").appendChild(b);
+  });
+  $("evForm").addEventListener("submit", e => {
+    e.preventDefault(); const t = $("evText").value.trim(); if (!t) return;
+    post("/api/mark", { note: t }); $("evText").value = "";
+  });
+  $("recBtn").addEventListener("click", () => post(status.session ? "/api/stop" : "/api/start"));
+  $("baseBtn").addEventListener("click", () => {
+    const sp = spectrum(), rv = rollingStd(2);
+    if (!sp) { $("vWhy").textContent = "Need about 25 s of data before setting a baseline."; return; }
+    baseline = { sig: meanLast(S, 30), var: Math.max(meanLast(rv, 30) || 0, 0.05), fl: Math.max(band(sp, FLICKER), 1e-6), pe: Math.max(band(sp, PEOPLE), 1e-6) };
+    try { localStorage.setItem("fs_baseline", JSON.stringify(baseline)); } catch (e) { /* ignore */ }
+    post("/api/mark", { note: "baseline" });
+  });
+  $("win").addEventListener("change", render);
+  window.addEventListener("resize", render);
+  // ---------- heat test ----------
+  const heat = { running: false, phases: [], idx: 0, t0: 0, piT0: 0, desc: "", results: [] };
+  try { heat.results = JSON.parse(localStorage.getItem("fs_heat") || "[]"); } catch (e) { heat.results = []; }
+  const num = (id, d) => { const v = parseFloat($(id).value); return isFinite(v) && v > 0 ? v : d; };
+
+  function phaseStats(piStart, piEnd) {
+    const rv = rollingStd(2); let vs = 0, vn = 0, ss = 0, sn = 0;
+    for (let i = 0; i < T.length; i++) {
+      if (T[i] < piStart || T[i] > piEnd) continue;
+      if (rv[i] != null) { vs += rv[i]; vn++; }
+      if (S[i] != null) { ss += S[i]; sn++; }
+    }
+    const sp = spectrum();
+    return { v: vn ? vs / vn : null, s: sn ? ss / sn : null, fl: band(sp, FLICKER) };
+  }
+
+  function startHeat() {
+    const on = num("hOn", 3), off = num("hOff", 3), cycles = Math.min(10, Math.round(num("hCycles", 3)));
+    heat.desc = `${$("hSource").value} ${Math.round(num("hPower", 1000))} W @ ${Math.round(num("hHeight", 50))} cm`;
+    heat.phases = [{ kind: "off", min: off }];
+    for (let c = 1; c <= cycles; c++) heat.phases.push({ kind: "on", min: on, cycle: c }, { kind: "off", min: off, cycle: c });
+    heat.idx = 0; heat.running = true; heat.stats = [];
+    if (!status.session) post("/api/start");
+    post("/api/mark", { note: "heat test: " + heat.desc });
+    beginPhase();
+  }
+  function beginPhase() {
+    const p = heat.phases[heat.idx];
+    heat.t0 = Date.now(); heat.piT0 = T.length ? T[T.length - 1] : 0;
+    post("/api/mark", { note: p.kind === "on" ? "heat on" : "heat off" });
+  }
+  function stopHeat(note) {
+    heat.running = false; post("/api/mark", { note });
+    try { localStorage.setItem("fs_heat", JSON.stringify(heat.results.slice(-60))); } catch (e) { /* ignore */ }
+  }
+  function endPhase() {
+    const p = heat.phases[heat.idx], piNow = T[T.length - 1];
+    const st = phaseStats(heat.piT0 + 15, piNow); // skip 15 s while the plume builds or clears
+    heat.stats.push({ ...p, ...st });
+    if (p.kind === "off" && p.cycle) {
+      const before = heat.stats[heat.stats.length - 3], during = heat.stats[heat.stats.length - 2], after = st;
+      const vOff = (before.v + after.v) / 2, fOff = (before.fl + after.fl) / 2, sOff = (before.s + after.s) / 2;
+      const r = { cycle: p.cycle, desc: heat.desc, vr: during.v / vOff, fr: during.fl / Math.max(fOff, 1e-9), ds: during.s - sOff };
+      r.seen = r.vr >= 1.3 || r.fr >= 2 || Math.abs(r.ds) >= 1;
+      heat.results.push(r);
+    }
+    heat.idx++;
+    if (heat.idx >= heat.phases.length) stopHeat("heat test end"); else beginPhase();
+  }
+  function heatTick() {
+    if (heat.running) {
+      const p = heat.phases[heat.idx], left = p.min * 60 - (Date.now() - heat.t0) / 1000;
+      if (left <= 0) endPhase();
+      const q = heat.phases[heat.idx];
+      if (heat.running && q) {
+        const l = Math.max(0, q.min * 60 - (Date.now() - heat.t0) / 1000);
+        $("hState").className = "verdict " + (q.kind === "on" ? "fire" : "quiet");
+        $("hPhase").textContent = q.kind === "on" ? "HEAT ON" : "HEAT OFF";
+        $("hClock").textContent = `${q.kind === "on" ? "Switch the heat ON now and keep it on" : "Switch the heat OFF and stay still"} · ${Math.floor(l / 60)}:${String(Math.floor(l % 60)).padStart(2, "0")} left`;
+        $("hCycleInfo").textContent = `${heat.desc} · period ${heat.idx + 1} of ${heat.phases.length}`;
+      }
+      $("hBtn").textContent = "Stop heat test"; $("hBtn").className = "rec";
+    } else {
+      $("hBtn").textContent = "Start heat test"; $("hBtn").className = "primary";
+      if (heat.phases.length) { $("hState").className = "verdict none"; $("hPhase").textContent = "Done"; $("hClock").textContent = "Results are in the table below."; }
+    }
+    renderHeat();
+  }
+  function renderHeat() {
+    const tb = $("hTable").querySelector("tbody");
+    tb.innerHTML = heat.results.slice().reverse().map(r =>
+      `<tr><td>${r.cycle}</td><td>${r.desc}</td><td style="text-align:center">${r.vr.toFixed(2)}×</td><td style="text-align:center">${r.fr.toFixed(2)}×</td><td style="text-align:center">${r.ds >= 0 ? "+" : ""}${r.ds.toFixed(1)} dB</td><td style="text-align:center;color:${r.seen ? css("--fire") : css("--muted")};font-weight:600">${r.seen ? "yes" : "no"}</td></tr>`).join("") ||
+      `<tr><td colspan="6" style="color:${css("--muted")}">No results yet.</td></tr>`;
+    const st = heat.stats || [], c = $("cHeat");
+    if (!st.length) { chart(c, { x0: 0, x1: 1, y0: 0, y1: 1, xticks: [], xfmt: v => v, yticks: [], yfmt: v => v, empty: "Variability per period appears here during a heat test" }); return; }
+    const { g, w, h } = setup(c), L = 46, B = 22, Tm = 10, ymax = Math.max(...st.map(s => s.v || 0), 0.5) * 1.2;
+    const bw = (w - L - 10) / st.length;
+    g.font = "11px " + css("--mono"); g.fillStyle = css("--muted"); g.strokeStyle = css("--grid");
+    ticks(0, ymax, 4).forEach(v => { const y = Tm + (1 - v / ymax) * (h - Tm - B); g.beginPath(); g.moveTo(L, y); g.lineTo(w - 10, y); g.stroke(); g.textAlign = "right"; g.fillText(v, L - 6, y + 4); });
+    st.forEach((s, i) => {
+      const bh = (s.v || 0) / ymax * (h - Tm - B), x = L + i * bw + bw * 0.15;
+      g.fillStyle = s.kind === "on" ? css("--fire") : css("--muted"); g.fillRect(x, h - B - bh, bw * 0.7, bh);
+      g.fillStyle = css("--muted"); g.textAlign = "center"; g.fillText(s.kind, x + bw * 0.35, h - 6);
+    });
+  }
+  $("heatForm").addEventListener("submit", e => { e.preventDefault(); if (heat.running) stopHeat("heat test stopped"); else startHeat(); heatTick(); });
+  setInterval(heatTick, 1000);
+
+  poll(); setInterval(poll, 1000);
+})();
+</script>
+</body>
+</html>
